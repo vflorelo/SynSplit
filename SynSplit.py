@@ -15,8 +15,9 @@ from sklearn.preprocessing   import StandardScaler
 parser = argparse.ArgumentParser(prog="ml-splitter.py",
                                  description="A simple program to separate populations of genes based on compositional bias",
                                  epilog="""LICENSE:
-                                 Distributed under the GNU General Public License (GPLv3). See LICENSE.md
+                                 Distributed under the MIT License. See LICENSE.md
                                  https://github.com/vflorelo/mlsplitter""")
+# Arguments
 parser.add_argument('-A',
                     '--train_list_a',
                     type=argparse.FileType('r'),
@@ -32,8 +33,8 @@ parser.add_argument('-t',
                     type=argparse.FileType('r'),
                     required=True,
                     help='A plain text file containing a list of unknown genes')
-parser.add_argument('-i',
-                    '--info_file',
+parser.add_argument('-c',
+                    '--comp_file',
                     type=argparse.FileType('r'),
                     required=True,
                     help='A tsv file containing the metrics to evaluate to separate the gene populations')
@@ -50,7 +51,7 @@ args              = parser.parse_args()
 train_list_a      = args.train_list_a
 train_list_b      = args.train_list_b
 test_list         = args.test_list
-info_file         = args.info_file
+comp_file         = args.comp_file
 p_value           = args.p_value
 prefix            = args.prefix
 train_list_a_fh   = train_list_a
@@ -67,7 +68,7 @@ full_list_a       = train_list_a
 full_list_b       = train_list_b
 full_list         = full_list + full_list_a + full_list_b + test_list
 
-
+# Sample the larger training set to match the size of the smaller training set
 if (len(train_list_a) > len(train_list_b) ):
     train_list_a = random.sample(train_list_a, k=len(train_list_b))
 else:
@@ -77,7 +78,7 @@ else:
 train_list = []
 train_list = train_list + train_list_a
 train_list = train_list + train_list_b
-df = pd.read_csv(info_file,sep="\t")
+df = pd.read_csv(comp_file,sep="\t")
 def assign_set(gene_id,gene_list_a,gene_list_b):
     if (gene_id in gene_list_a):
         gene_set = "A"

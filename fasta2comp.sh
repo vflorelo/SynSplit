@@ -1,7 +1,60 @@
 #!/bin/bash
-fasta_file=$1
-out_file=$2
-threads=$3
+comp_usage="$(dirname $0)/comp_usage.sh"
+source ${comp_usage}
+check_dependencies(){
+    for dep in cusp geecee seqtk parallel
+    do
+        if ! command -v ${dep} &> /dev/null
+        then
+            echo "Error: ${dep} is not installed"
+            exit 1
+        fi
+    done
+    }
+export -f check_dependencies
+check_dependencies
+while [ "$1" != "" ]
+do
+    case $1 in
+        --fasta_file     )
+            shift
+            fasta_file=$(realpath $1)
+            ;;
+        --out_file )
+            shift
+            out_file=$1
+            ;;
+        --threads )
+            shift
+            threads=$1
+            ;;
+		--help          )
+            comp_usage
+            exit 0
+            ;;
+	esac
+	shift
+done
+
+if [ ! -f "${fasta_file}" ]
+then
+    echo "CDS fasta file ${fasta_file} missing. Exiting"
+    exit 2
+fi
+
+num_proc=$(nproc)
+if [ -z "${threads}" ]
+then
+    threads=${num_proc}
+else
+    threads_test=$(echo -e "${threads}\t${num_proc}" | awk '{if((int($1)==$1) && ($1<=$2)){print $1}}')
+    if [ -z "${threads_test}" ]
+    then
+        echo "Invalid threads value. Exiting"
+        exit 3
+    fi
+fi
+
 get_codon_stats(){
     gene_id=$1
     fasta_file=$2
@@ -28,6 +81,7 @@ get_codon_stats(){
     echo "${frac_list}"
     }
 export -f get_codon_stats
+uuid=$(uuidgen | cut -d\- -f5)
 id_list=$(grep ">" "${fasta_file}" | perl -pe 's/\>//;s/ .*//' | sort -V | uniq) 
 id_count=$(echo "${id_list}" | wc -l)
 id_iters=$(echo ${id_count} | awk '{modulo=$1%1000}{if(modulo==0){print $1/1000}else{print (($1-modulo)/1000)+1 }}')
@@ -35,16 +89,16 @@ for iter in $(seq 1 ${id_iters})
 do
     start_line=$(echo "${iter}" | awk '{print (($1-1)*1000)+1}')
     id_sub_list=$(echo "${id_list}" | tail -n+${start_line} | head -n1000)
-    parallel -j ${threads} get_codon_stats ::: "${id_sub_list[@]}" ::: "${fasta_file}" >> cusp.tsv
+    parallel -j ${threads} get_codon_stats ::: "${id_sub_list[@]}" ::: "${fasta_file}" >> ${uuid}cusp.tsv
 done
 exit_code=$?
 if [ "${exit_code}" -ne 0 ]
 then
-    echo "Error running CUSP in parallel"
+    echo "Error running cusp in parallel"
     exit ${exit_code}
 fi
-echo "$(sort -V cusp.tsv | uniq )" > cusp.tsv
-geecee ${fasta_file} stdout 2>/dev/null | grep -v "#" | awk 'BEGIN{OFS="\t"}{print $1,$2}' | sort -V | uniq > geecee.tsv
+echo "$(sort -V ${uuid}.cusp.tsv | uniq )" > ${uuid}.cusp.tsv
+geecee ${fasta_file} stdout 2>/dev/null | grep -v "#" | awk 'BEGIN{OFS="\t"}{print $1,$2}' | sort -V | uniq > ${uuid}.geecee.tsv
 exit_code=$?
 if [ "${exit_code}" -ne 0 ]
 then
@@ -52,5 +106,5 @@ then
     exit ${exit_code}
 fi
 echo -e "id\t%G+C\tGCA\tGCC\tGCG\tGCT\tTGC\tTGT\tGAC\tGAT\tGAA\tGAG\tTTC\tTTT\tGGA\tGGC\tGGG\tGGT\tCAC\tCAT\tATA\tATC\tATT\tAAA\tAAG\tCTA\tCTC\tCTG\tCTT\tTTA\tTTG\tATG\tAAC\tAAT\tCCA\tCCC\tCCG\tCCT\tCAA\tCAG\tAGA\tAGG\tCGA\tCGC\tCGG\tCGT\tAGC\tAGT\tTCA\tTCC\tTCG\tTCT\tACA\tACC\tACG\tACT\tGTA\tGTC\tGTG\tGTT\tTGG\tTAC\tTAT" > "${out_file}"
-paste geecee.tsv cusp.tsv | awk 'BEGIN{FS="\t"}{if($1==$3){print $0}}' | cut -f3 --complement >> "${out_file}"
-rm cusp.tsv geecee.tsv
+paste ${uuid}.geecee.tsv ${uuid}.cusp.tsv | awk 'BEGIN{FS="\t"}{if($1==$3){print $0}}' | cut -f3 --complement >> "${out_file}"
+rm ${uuid}.cusp.tsv ${uuid}.geecee.tsv
